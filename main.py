@@ -15,10 +15,11 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- CORS Configuration ---
+# --- CORS Configuration (THE FIX IS HERE) ---
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://geolearn-frontend.vercel.app"  # <-- ADDED YOUR LIVE FRONTEND
 ]
 
 app.add_middleware(
@@ -276,7 +277,6 @@ def upload_material(
             raise HTTPException(status_code=404, detail="Invalid course_id. Course does not exist.")
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-# --- NEW ENDPOINT TO FETCH ALL USERS ---
 @app.get("/admin/users", response_model=List[User])
 def get_all_users(admin_user: User = Depends(get_admin_user)):
     try:
