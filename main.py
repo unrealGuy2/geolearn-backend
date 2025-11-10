@@ -15,11 +15,11 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- CORS Configuration (THE FIX IS HERE) ---
+# --- CORS Configuration ---
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://geolearn-frontend.vercel.app"  # <-- ADDED YOUR LIVE FRONTEND
+    "https://geolearn-frontend.vercel.app"
 ]
 
 app.add_middleware(
@@ -103,11 +103,9 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         if not profile_response.data:
             raise HTTPException(status_code=404, detail="User profile not found")
         
-        # Use .model_validate() for Pydantic v2
         return User.model_validate(profile_response.data[0]) 
     
     except Exception as e:
-        # Log the error for debugging
         print(f"Auth Error: {e}")
         raise HTTPException(status_code=401, detail="Invalid authentication credentials")
 
@@ -282,5 +280,19 @@ def get_all_users(admin_user: User = Depends(get_admin_user)):
     try:
         response = supabase.table("users").select("*").order("full_name").execute()
         return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- NEW ENDPOINT TO PROMOTE A USER ---
+@app.post("/admin/users/{user_id}/promote", response_model=User)
+def promote_user(user_id: str, admin_user: User = Depends(get_admin_user)):
+    try:
+        # Update the user's role to 'admin'
+        response = supabase.table("users").update({"role": "admin"}).eq("id", user_id).select().execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return response.data[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
