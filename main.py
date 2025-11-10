@@ -199,6 +199,49 @@ def get_all_courses(current_user: User = Depends(get_current_user)):
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+# --- NEW LECTURER UPLOAD ENDPOINT ---
+@app.post("/lecturer/upload", response_model=Material)
+def upload_material_pending(
+    title: str = Form(...),
+    material_type: str = Form(...),
+    course_id: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user) # <-- Any logged-in user can access
+):
+    try:
+        timestamp = datetime.datetime.now().isoformat().replace(":", "-")
+        file_path = f"course_{course_id}/{timestamp}_{file.filename}"
+
+        file_content = file.file.read()
+
+        supabase.storage.from_("materials").upload(
+            path=file_path,
+            file=file_content,
+            file_options={"content-type": file.content_type}
+        )
+
+        file_url = supabase.storage.from_("materials").get_public_url(file_path)
+
+        material_data = {
+            "title": title,
+            "material_type": material_type,
+            "file_url": file_url,
+            "course_id": course_id,
+            "uploaded_by": current_user.id,
+            "status": "pending"  # <-- FORCED TO PENDING
+        }
+
+        db_response = supabase.table("materials").insert(material_data).execute()
+        
+        return db_response.data[0]
+
+    except Exception as e:
+        if "foreign key constraint" in str(e):
+            raise HTTPException(status_code=404, detail="Invalid course_id. Course does not exist.")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+# --- END NEW ENDPOINT ---
+
+
 # --- Admin-Only Endpoints ---
 
 @app.get("/admin/metrics")
@@ -241,7 +284,7 @@ def upload_material(
     material_type: str = Form(...),
     course_id: str = Form(...),
     file: UploadFile = File(...),
-    admin_user: User = Depends(get_admin_user)
+    admin_user: User = Depends(get_admin_user) # <-- Admin only
 ):
     try:
         timestamp = datetime.datetime.now().isoformat().replace(":", "-")
@@ -263,7 +306,7 @@ def upload_material(
             "file_url": file_url,
             "course_id": course_id,
             "uploaded_by": admin_user.id,
-            "status": "approved"
+            "status": "approved" # <-- Admin uploads are auto-approved
         }
 
         db_response = supabase.table("materials").insert(material_data).execute()
@@ -283,11 +326,9 @@ def get_all_users(admin_user: User = Depends(get_admin_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- NEW ENDPOINT TO PROMOTE A USER ---
 @app.post("/admin/users/{user_id}/promote", response_model=User)
 def promote_user(user_id: str, admin_user: User = Depends(get_admin_user)):
     try:
-        # Update the user's role to 'admin'
         response = supabase.table("users").update({"role": "admin"}).eq("id", user_id).select().execute()
         
         if not response.data:
